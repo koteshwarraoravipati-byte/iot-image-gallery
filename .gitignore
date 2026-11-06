@@ -6,3 +6,6 @@ __pycache__/
 .aws-sam/
 node_modules/
 secrets.h
+
+samconfig.toml
+firmware/config.h

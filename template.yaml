@@ -1,0 +1,133 @@
+AWSTemplateFormatVersion: '2010-09-09'
+Transform: AWS::Serverless-2016-10-31
+Description: Private IoT JPEG upload and thumbnail gallery
+Parameters:
+  DeviceSecret:
+    Type: String
+    NoEcho: true
+    MinLength: 32
+    Description: Random device API secret; never commit it or embed it in the public website
+Globals:
+  Function:
+    Runtime: python3.12
+    Architectures: [x86_64]
+    Timeout: 20
+    MemorySize: 256
+    LoggingConfig:
+      LogFormat: JSON
+Resources:
+  GalleryBucket:
+    Type: AWS::S3::Bucket
+    Properties:
+      BucketName: !Sub '${AWS::StackName}-${AWS::AccountId}-${AWS::Region}'
+      PublicAccessBlockConfiguration:
+        BlockPublicAcls: true
+        BlockPublicPolicy: true
+        IgnorePublicAcls: true
+        RestrictPublicBuckets: true
+      OwnershipControls:
+        Rules: [{ObjectOwnership: BucketOwnerEnforced}]
+      BucketEncryption:
+        ServerSideEncryptionConfiguration:
+          - ServerSideEncryptionByDefault: {SSEAlgorithm: AES256}
+      LifecycleConfiguration:
+        Rules:
+          - Id: ExpireDemoImages
+            Status: Enabled
+            ExpirationInDays: 30
+            AbortIncompleteMultipartUpload: {DaysAfterInitiation: 1}
+  SecureTransportPolicy:
+    Type: AWS::S3::BucketPolicy
+    Properties:
+      Bucket: !Ref GalleryBucket
+      PolicyDocument:
+        Version: '2012-10-17'
+        Statement:
+          - Effect: Deny
+            Principal: '*'
+            Action: 's3:*'
+            Resource:
+              - !GetAtt GalleryBucket.Arn
+              - !Sub '${GalleryBucket.Arn}/*'
+            Condition:
+              Bool: {aws:SecureTransport: 'false'}
+  GalleryApi:
+    Type: AWS::Serverless::HttpApi
+    Properties:
+      StageName: '$default'
+      DefaultRouteSettings:
+        ThrottlingBurstLimit: 5
+        ThrottlingRateLimit: 2
+  ApiFunction:
+    Type: AWS::Serverless::Function
+    Properties:
+      CodeUri: api/
+      Handler: app.lambda_handler
+      Environment:
+        Variables:
+          BUCKET_NAME: !Sub '${AWS::StackName}-${AWS::AccountId}-${AWS::Region}'
+          DEVICE_SECRET: !Ref DeviceSecret
+      Policies:
+        - Statement:
+            - Effect: Allow
+              Action: ['s3:PutObject']
+              Resource: !Sub 'arn:${AWS::Partition}:s3:::${AWS::StackName}-${AWS::AccountId}-${AWS::Region}/originals/*'
+            - Effect: Allow
+              Action: ['s3:GetObject']
+              Resource: !Sub 'arn:${AWS::Partition}:s3:::${AWS::StackName}-${AWS::AccountId}-${AWS::Region}/thumbnails/*'
+            - Effect: Allow
+              Action: ['s3:ListBucket']
+              Resource: !Sub 'arn:${AWS::Partition}:s3:::${AWS::StackName}-${AWS::AccountId}-${AWS::Region}'
+              Condition:
+                StringLike: {s3:prefix: ['thumbnails/*']}
+      Events:
+        Presign:
+          Type: HttpApi
+          Properties: {ApiId: !Ref GalleryApi, Path: /presign, Method: POST}
+        List:
+          Type: HttpApi
+          Properties: {ApiId: !Ref GalleryApi, Path: /gallery, Method: GET}
+  ThumbnailFunction:
+    Type: AWS::Serverless::Function
+    Properties:
+      CodeUri: lambda/
+      Handler: lambda_function.lambda_handler
+      MemorySize: 512
+      Timeout: 30
+      Environment:
+        Variables:
+          BUCKET_NAME: !Sub '${AWS::StackName}-${AWS::AccountId}-${AWS::Region}'
+      Policies:
+        - Statement:
+            - Effect: Allow
+              Action: ['s3:GetObject']
+              Resource: !Sub 'arn:${AWS::Partition}:s3:::${AWS::StackName}-${AWS::AccountId}-${AWS::Region}/originals/*'
+            - Effect: Allow
+              Action: ['s3:PutObject']
+              Resource: !Sub 'arn:${AWS::Partition}:s3:::${AWS::StackName}-${AWS::AccountId}-${AWS::Region}/thumbnails/*'
+      Events:
+        NewOriginal:
+          Type: S3
+          Properties:
+            Bucket: !Ref GalleryBucket
+            Events: 's3:ObjectCreated:*'
+            Filter:
+              S3Key:
+                Rules:
+                  - {Name: prefix, Value: originals/}
+                  - {Name: suffix, Value: .jpg}
+  ApiLogs:
+    Type: AWS::Logs::LogGroup
+    Properties:
+      LogGroupName: !Sub '/aws/lambda/${ApiFunction}'
+      RetentionInDays: 14
+  ThumbnailLogs:
+    Type: AWS::Logs::LogGroup
+    Properties:
+      LogGroupName: !Sub '/aws/lambda/${ThumbnailFunction}'
+      RetentionInDays: 14
+Outputs:
+  ApiBaseUrl:
+    Value: !Sub 'https://${GalleryApi}.execute-api.${AWS::Region}.${AWS::URLSuffix}'
+  BucketName:
+    Value: !Ref GalleryBucket

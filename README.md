@@ -1,42 +1,34 @@
 # IoT Image Gallery
 
-**Batch 36 · Project No. 02**
+Batch 36 · Project No. 02
 
-> Press a button to capture an event, an LED confirms upload, and the image is auto‑thumbnailed by AWS Lambda.
-
-## Team
-| # | Name |
-|---|------|
-| 1 | R. Koteshwar Rao |
-| 2 | K. Siddhartha |
-| 3 | R. Nagavignesh |
-| 4 | S. Akshaya |
-| 5 | E. Akshitha |
-
-## How it works
-1. **Button press** on GPIO13 of an ESP32‑CAM triggers an interrupt.
-2. The **OV2640 camera** captures a JPEG.
-3. The device **uploads** the image to an S3 bucket (`originals/`) over HTTPS.
-4. On HTTP 200, a **green LED** (GPIO12) lights up to confirm the upload.
-5. The S3 `ObjectCreated` event invokes an **AWS Lambda** function that creates a thumbnail in `thumbnails/`.
-6. The **web dashboard** (`index.html`) shows the pipeline, stats and thumbnail gallery.
-
-## Repo structure
-```
-index.html                  Dashboard website (GitHub Pages)
-firmware/iot_gallery.ino    ESP32‑CAM firmware (Arduino)
-lambda/lambda_function.py   Thumbnail generator (Python + Pillow)
-```
+An ESP32-CAM project with a public browser simulation and source for a private AWS upload/thumbnail pipeline.
 
 ## Live demo
-The dashboard includes a browser simulation of the device and cloud pipeline. Press the red button or hit **Space**.
 
-## Deploy (GitHub Pages)
-Settings → Pages → Source: *Deploy from a branch* → `main` / `(root)` → Save.
-Site URL: `https://<your-username>.github.io/iot-image-gallery/`
+https://koteshwarraoravipati-byte.github.io/iot-image-gallery/
 
-## AWS setup (summary)
-1. Create S3 bucket `iot-gallery-<yourname>` with folders `originals/` and `thumbnails/`.
-2. Create Lambda (Python 3.12), attach a Pillow layer, paste `lambda/lambda_function.py`.
-3. Add S3 trigger: event `PUT`, prefix `originals/`.
-4. Give the Lambda role `s3:GetObject` on `originals/*` and `s3:PutObject` on `thumbnails/*`.
+Press the red button or Space to simulate capture, upload, LED confirmation and thumbnails. All demo images and metrics are generated in the browser; refreshing clears them. The demo does not connect to AWS.
+
+## Project files
+
+- `index.html`: standalone HTML/CSS/JavaScript demo, Chart.js 4.4.8.
+- `firmware/`: ESP32-CAM source and a secret-free configuration example.
+- `api/app.py`: header-authenticated presigned upload URL and gallery APIs.
+- `lambda/`: bounded JPEG thumbnail processing with Pillow.
+- `template.yaml`: AWS SAM infrastructure for private S3, API Gateway and Lambda.
+- `tests/`: offline backend tests and signing checks.
+
+## AWS deployment
+
+See [DEPLOYMENT.md](DEPLOYMENT.md) for setup, security boundaries, testing and cleanup. AWS resources have not been deployed as part of this publishing step. The public demo remains a simulation. Never place a device secret, WiFi password, or AWS credentials in this website or repository.
+
+Backend offline tests and static infrastructure lint passed during preparation; container build, cloud smoke tests and ESP32 compilation/flash remain unverified. AWS use may incur charges.
+
+## Team
+
+R. Koteshwar Rao, K. Siddhartha, R. Nagavignesh, S. Akshaya and E. Akshitha.
+
+## GitHub Pages
+
+Publish `main` from the repository root in Settings → Pages. `.nojekyll` keeps the site a plain static deployment.
