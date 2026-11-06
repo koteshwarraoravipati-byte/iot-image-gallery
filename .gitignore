@@ -1,0 +1,8 @@
+.env
+.env.*
+!.env.example
+__pycache__/
+*.pyc
+.aws-sam/
+node_modules/
+secrets.h
